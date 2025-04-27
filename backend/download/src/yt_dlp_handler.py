@@ -156,8 +156,8 @@ class VideoDownloader(DownloaderBase):
     def _build_obs_basic(self):
         """initial obs"""
         self.obs = {
-            "merge_output_format": "webm",
-            "outtmpl": (self.CACHE_DIR + "/download/%(id)s.webm"),
+            "merge_output_format": "mkv",
+            "outtmpl": (self.CACHE_DIR + "/download/%(id)s.mkv"),
             "progress_hooks": [self._progress_hook],
             "noprogress": True,
             "continuedl": True,
@@ -229,17 +229,17 @@ class VideoDownloader(DownloaderBase):
             self._handle_error(youtube_id, message)
 
 
-        webm_path = os.path.join(dl_cache, f"{youtube_id}.webm")
+        mkv_path = os.path.join(dl_cache, f"{youtube_id}.mkv")
         mp4_path = os.path.join(dl_cache, f"{youtube_id}.mp4")
         mp4_nt_path = os.path.join(dl_cache, f"{youtube_id}_nt.mp4")
         mp4_with_thumb = os.path.join(dl_cache, f"{youtube_id}_t.mp4")
         thumb_path = os.path.join(dl_cache, f"{youtube_id}.webp")
         
-        if os.path.exists(webm_path):
+        if os.path.exists(mkv_path):
             ffmpeg_cmd = [
                 "ffmpeg",
                 "-y",
-                "-i", webm_path,
+                "-i", mkv_path,
                 "-c:v", "copy",
                 "-c:a", "copy",
                 "-movflags", "+faststart",
@@ -247,7 +247,7 @@ class VideoDownloader(DownloaderBase):
             ]
             try:
                 subprocess.run(ffmpeg_cmd, check=True)
-                os.remove(webm_path)
+                os.remove(mkv_path)
             except subprocess.CalledProcessError as e:
                 print(f"ffmpeg conversion failed: {e}")
                 self._handle_error(youtube_id, "ffmpeg conversion failed")
