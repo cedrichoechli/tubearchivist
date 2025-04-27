@@ -1,3 +1,7 @@
+This fork is experimental! 
+Downloads to mkv file for maximum compatibility to use the best codecs. Converts mkv to mp4. 
+
+
 ![Tube Archivist](assets/tube-archivist-front.jpg?raw=true "Tube Archivist Banner")  
 [*more screenshots and video*](SHOWCASE.MD)
 
