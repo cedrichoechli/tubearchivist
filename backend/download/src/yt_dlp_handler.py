@@ -8,6 +8,7 @@ functionality:
 
 import os
 import shutil
+import subprocess
 from datetime import datetime
 
 from appsettings.src.config import AppConfig
@@ -155,8 +156,8 @@ class VideoDownloader(DownloaderBase):
     def _build_obs_basic(self):
         """initial obs"""
         self.obs = {
-            "merge_output_format": "mp4",
-            "outtmpl": (self.CACHE_DIR + "/download/%(id)s.mp4"),
+            "merge_output_format": "webm",
+            "outtmpl": (self.CACHE_DIR + "/download/%(id)s.webm"),
             "progress_hooks": [self._progress_hook],
             "noprogress": True,
             "continuedl": True,
@@ -207,12 +208,6 @@ class VideoDownloader(DownloaderBase):
             )
 
         if self.config["downloads"]["add_thumbnail"]:
-            postprocessors.append(
-                {
-                    "key": "EmbedThumbnail",
-                    "already_have_thumbnail": True,
-                }
-            )
             self.obs["writethumbnail"] = True
 
         self.obs["postprocessors"] = postprocessors
@@ -232,6 +227,69 @@ class VideoDownloader(DownloaderBase):
         success, message = YtWrap(obs, self.config).download(youtube_id)
         if not success:
             self._handle_error(youtube_id, message)
+
+
+        webm_path = os.path.join(dl_cache, f"{youtube_id}.webm")
+        mp4_path = os.path.join(dl_cache, f"{youtube_id}.mp4")
+        mp4_nt_path = os.path.join(dl_cache, f"{youtube_id}_nt.mp4")
+        mp4_with_thumb = os.path.join(dl_cache, f"{youtube_id}_t.mp4")
+        thumb_path = os.path.join(dl_cache, f"{youtube_id}.webp")
+        
+        if os.path.exists(webm_path):
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", webm_path,
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                mp4_nt_path
+            ]
+            try:
+                subprocess.run(ffmpeg_cmd, check=True)
+                os.remove(webm_path)
+            except subprocess.CalledProcessError as e:
+                print(f"ffmpeg conversion failed: {e}")
+                self._handle_error(youtube_id, "ffmpeg conversion failed")
+
+        if os.path.exists(mp4_nt_path) and os.path.exists(thumb_path):
+            # Convert webp to jpg for MP4 cover art
+            thumb_jpg = os.path.join(dl_cache, f"{youtube_id}.jpg")
+            convert_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", thumb_path,
+                thumb_jpg
+            ]
+            try:
+                subprocess.run(convert_cmd, check=True)
+                os.remove(thumb_path)
+            except subprocess.CalledProcessError as e:
+                print(f"Thumbnail conversion failed: {e}")
+                self._handle_error(youtube_id, "thumbnail conversion failed")
+
+            if os.path.exists(mp4_nt_path) and os.path.exists(thumb_jpg):
+                ffmpeg_thumb_cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-i", mp4_nt_path,
+                    "-i", thumb_jpg,
+                    "-map", "0",
+                    "-map", "1:v:0",
+                    "-c", "copy",
+                    "-c:v:1", "mjpeg",
+                    "-disposition:v:1", "attached_pic",
+                    mp4_with_thumb
+                ]
+                try:
+                    subprocess.run(ffmpeg_thumb_cmd, check=True)
+                    os.remove(mp4_nt_path)
+                    os.rename(mp4_with_thumb, mp4_path)
+                    os.remove(thumb_jpg)
+                except subprocess.CalledProcessError as e:
+                    print(f"ffmpeg thumbnail embedding failed: {e}")
+                    self._handle_error(youtube_id, "ffmpeg thumbnail embedding failed")
+
 
         if self.obs["writethumbnail"]:
             # webp files don't get cleaned up automatically
