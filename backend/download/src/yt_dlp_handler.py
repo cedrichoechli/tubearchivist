@@ -231,27 +231,8 @@ class VideoDownloader(DownloaderBase):
 
         mkv_path = os.path.join(dl_cache, f"{youtube_id}.mkv")
         mp4_path = os.path.join(dl_cache, f"{youtube_id}.mp4")
-        mp4_nt_path = os.path.join(dl_cache, f"{youtube_id}_nt.mp4")
-        mp4_with_thumb = os.path.join(dl_cache, f"{youtube_id}_t.mp4")
         thumb_path = os.path.join(dl_cache, f"{youtube_id}.webp")
         
-        if os.path.exists(mkv_path):
-            ffmpeg_cmd = [
-                "ffmpeg",
-                "-y",
-                "-i", mkv_path,
-                "-c:v", "copy",
-                "-c:a", "copy",
-                "-movflags", "+faststart",
-                mp4_nt_path
-            ]
-            try:
-                subprocess.run(ffmpeg_cmd, check=True)
-                os.remove(mkv_path)
-            except subprocess.CalledProcessError as e:
-                print(f"ffmpeg conversion failed: {e}")
-                self._handle_error(youtube_id, "ffmpeg conversion failed")
-
         thumb_exts = [".webp", ".jpg", ".jpeg", ".png"]
         thumb_path = None
         for ext in thumb_exts:
@@ -260,48 +241,56 @@ class VideoDownloader(DownloaderBase):
                 thumb_path = candidate
                 break
 
-        if os.path.exists(mp4_nt_path) and thumb_path:
-            # If not already jpg, convert to jpg for MP4 cover art
-            thumb_jpg = os.path.join(dl_cache, f"{youtube_id}.jpg")
-            if not thumb_path.endswith(".jpg"):
-                convert_cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-i", thumb_path,
-                    thumb_jpg
-                ]
-                try:
-                    subprocess.run(convert_cmd, check=True)
-                    os.remove(thumb_path)
-                except subprocess.CalledProcessError as e:
-                    print(f"Thumbnail conversion failed: {e}")
-                    self._handle_error(youtube_id, "thumbnail conversion failed")
-            else:
-                # If already jpg, just use it
+        if os.path.exists(mkv_path):
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", mkv_path,
+            ]
+            if thumb_path:
+                # If not already jpg, convert thumbnail to jpg in memory
                 thumb_jpg = thumb_path
-
-            if os.path.exists(mp4_nt_path) and os.path.exists(thumb_jpg):
-                ffmpeg_thumb_cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-i", mp4_nt_path,
+                if not thumb_path.endswith(".jpg"):
+                    thumb_jpg = os.path.join(dl_cache, f"{youtube_id}.jpg")
+                    convert_cmd = [
+                        "ffmpeg",
+                        "-y",
+                        "-i", thumb_path,
+                        thumb_jpg
+                    ]
+                    try:
+                        subprocess.run(convert_cmd, check=True)
+                        os.remove(thumb_path)
+                    except subprocess.CalledProcessError as e:
+                        print(f"Thumbnail conversion failed: {e}")
+                        self._handle_error(youtube_id, "thumbnail conversion failed")
+                # Add thumbnail embedding arguments
+                ffmpeg_cmd += [
                     "-i", thumb_jpg,
                     "-map", "0",
                     "-map", "1:v:0",
                     "-c", "copy",
                     "-c:v:1", "mjpeg",
                     "-disposition:v:1", "attached_pic",
-                    mp4_with_thumb
+                    "-movflags", "+faststart",
+                    mp4_path
                 ]
-                try:
-                    subprocess.run(ffmpeg_thumb_cmd, check=True)
-                    os.remove(mp4_nt_path)
-                    os.rename(mp4_with_thumb, mp4_path)
-                    if thumb_jpg != thumb_path:
-                        os.remove(thumb_jpg)
-                except subprocess.CalledProcessError as e:
-                    print(f"ffmpeg thumbnail embedding failed: {e}")
-                    self._handle_error(youtube_id, "ffmpeg thumbnail embedding failed")
+            else:
+                # No thumbnail, just convert
+                ffmpeg_cmd += [
+                    "-c:v", "copy",
+                    "-c:a", "copy",
+                    "-movflags", "+faststart",
+                    mp4_path
+                ]
+            try:
+                subprocess.run(ffmpeg_cmd, check=True)
+                os.remove(mkv_path)
+                if thumb_path and thumb_jpg != thumb_path and os.path.exists(thumb_jpg):
+                    os.remove(thumb_jpg)
+            except subprocess.CalledProcessError as e:
+                print(f"ffmpeg conversion/embedding failed: {e}")
+                self._handle_error(youtube_id, "ffmpeg conversion/embedding failed")
 
 
         if self.obs["writethumbnail"]:
